@@ -24,6 +24,10 @@ int main(int argc, const char** argv)
             completions.push_back("hello there");
 #endif
         }
+        if (editBuffer[0] == ' ' && editBuffer[1] == 'e') {
+            completions.push_back("edit");
+            completions.push_back("edit");
+        }
     });
 
     // Load history
