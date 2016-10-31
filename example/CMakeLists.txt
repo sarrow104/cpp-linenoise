@@ -3,3 +3,5 @@ include_directories(.)
 add_definitions("-std=c++1y")
 
 add_executable(example example.cpp)
+
+install(FILES ../linenoise.hpp DESTINATION include)
