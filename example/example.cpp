@@ -34,14 +34,14 @@ int main(int argc, const char** argv)
     linenoise::LoadHistory(path);
 
     while (true) {
-        // Read line
+        std::string line;
 #ifdef _WIN32
-        auto line = linenoise::Readline("hello> ");
+        auto quit = linenoise::Readline("hello> ", line);
 #else
-        auto line = linenoise::Readline("\033[32mこんにちは\x1b[0m> ");
+        auto quit = linenoise::Readline("\033[32mこんにちは\x1b[0m> ", line);
 #endif
 
-        if (line.empty()) {
+        if (quit) {
             break;
         }
 

@@ -1754,10 +1754,10 @@ inline void linenoiseBeep(void) {
  *
  * The state of the editing is encapsulated into the pointed linenoiseState
  * structure as described in the structure definition. */
-inline int completeLine(struct linenoiseState *ls) {
+inline int completeLine(struct linenoiseState *ls, char *cbuf, int *c) {
     std::vector<std::string> lc;
-    int nread, nwritten;
-    char c = 0;
+    int nread = 0, nwritten;
+    *c = 0;
 
     completionCallback(ls->buf,lc);
     if (lc.empty()) {
@@ -1780,12 +1780,21 @@ inline int completeLine(struct linenoiseState *ls) {
                 refreshLine(ls);
             }
 
-            nread = read(ls->ifd,&c,1);
+            //nread = read(ls->ifd,&c,1);
+#ifdef _WIN32
+            nread = win32read(c);
+            if (nread == 1) {
+                cbuf[0] = *c;
+            }
+#else
+            nread = unicodeReadUTF8Char(ls->ifd,cbuf,c);
+#endif
             if (nread <= 0) {
-                return -1;
+                *c = -1;
+                return nread;
             }
 
-            switch(c) {
+            switch(*c) {
                 case 9: /* tab */
                     i = (i+1) % (lc.size()+1);
                     if (i == lc.size()) linenoiseBeep();
@@ -1807,7 +1816,7 @@ inline int completeLine(struct linenoiseState *ls) {
         }
     }
 
-    return c; /* Return last read character */
+    return nread;
 }
 
 /* Register a callback function to be called for tab-completion. */
@@ -1823,7 +1832,6 @@ void SetCompletionCallback(CompletionCallback fn) {
  * cursor position, and number of columns of the terminal. */
 inline void refreshSingleLine(struct linenoiseState *l) {
     char seq[64];
-    size_t plen = l->prompt.length();
     size_t pcolwid = unicodeColumnPos(l->prompt.c_str(), l->prompt.length());
     int fd = l->ofd;
     char *buf = l->buf;
@@ -2124,7 +2132,7 @@ inline int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, size_t buflen, 
          * there was an error reading from fd. Otherwise it will return the
          * character that should be handled next. */
         if (c == 9 && completionCallback != NULL) {
-            c = completeLine(&l);
+            nread = completeLine(&l,cbuf,&c);
             /* Return on errors */
             if (c < 0) return l.len;
             /* Read next character when 0 */
@@ -2261,26 +2269,30 @@ inline int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, size_t buflen, 
 
 /* This function calls the line editing function linenoiseEdit() using
  * the STDIN file descriptor set in raw mode. */
-inline std::string linenoiseRaw(const char *prompt) {
-    std::string line;
+inline bool linenoiseRaw(const char *prompt, std::string& line) {
+    bool quit = false;
 
     if (!isatty(STDIN_FILENO)) {
         /* Not a tty: read from file / pipe. */
         std::getline(std::cin, line);
     } else {
         /* Interactive editing. */
-        if (enableRawMode(STDIN_FILENO) == false) return line;
+        if (enableRawMode(STDIN_FILENO) == false) {
+            return quit;
+        }
 
         char buf[LINENOISE_MAX_LINE];
         auto count = linenoiseEdit(STDIN_FILENO, STDOUT_FILENO, buf, LINENOISE_MAX_LINE, prompt);
-        if (count != -1) {
+        if (count == -1) {
+            quit = true;
+        } else {
             line.assign(buf, count);
         }
 
         disableRawMode(STDIN_FILENO);
         printf("\n");
     }
-    return line;
+    return quit;
 }
 
 /* The high level function that is the main API of the linenoise library.
@@ -2288,16 +2300,26 @@ inline std::string linenoiseRaw(const char *prompt) {
  * for a blacklist of stupid terminals, and later either calls the line
  * editing function or uses dummy fgets() so that you will be able to type
  * something even in the most desperate of the conditions. */
-inline std::string Readline(const char *prompt) {
+inline bool Readline(const char *prompt, std::string& line) {
     if (isUnsupportedTerm()) {
         printf("%s",prompt);
         fflush(stdout);
-        std::string line;
         std::getline(std::cin, line);
-        return line;
+        return false;
     } else {
-        return linenoiseRaw(prompt);
+        return linenoiseRaw(prompt, line);
     }
+}
+
+inline std::string Readline(const char *prompt, bool& quit) {
+    std::string line;
+    quit = Readline(prompt, line);
+    return line;
+}
+
+inline std::string Readline(const char *prompt) {
+    bool quit; // dummy
+    return Readline(prompt, quit);
 }
 
 /* ================================ History ================================= */
